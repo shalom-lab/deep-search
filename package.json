@@ -1,0 +1,30 @@
+{
+  "name": "deepsearch",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "BYOK 模式的 DeepSeek 网页搜索与抓取工作台（Search + Fetch）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/serve.js",
+    "check": "node scripts/check-syntax.mjs",
+    "lint": "eslint src server scripts vite.config.js eslint.config.js",
+    "test": "node scripts/run-tests.mjs",
+    "verify": "npm run check && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "marked": "^14.1.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "recharts": "^2.13.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "vite": "^5.4.11"
+  }
+}

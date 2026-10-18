@@ -1,0 +1,24 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.check-tmp/
+
+# 本地缓存与日志（.npmrc 会把 npm 缓存放进仓库以避免写入系统目录）
+.npm-cache/
+npm-debug.log*
+*.log
+.dev-out.log
+.dev-err.log
+.build-log.txt
+
+# 本地临时产物
+.acl-report/
+.env
+.env.*
+!.env.example
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
