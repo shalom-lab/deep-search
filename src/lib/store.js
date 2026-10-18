@@ -1,20 +1,31 @@
 /**
  * 应用状态：BYOK 密钥、偏好、搜索历史与用量。
  *
- * 密钥和每一项配置都是独立的 localStorage 键，启动只读、不验证、不回写。
+ * 密钥与轻量扁平偏好：独立 localStorage 键，启动只读、不验证、不回写密钥。
+ * 历史、统计等偏大数据：IndexedDB（见 idb.js）；首次打开可从旧 LS 大键迁移。
  * 密钥只在设置页保存且连接验证通过后写入；请求失败不会改动已存密钥。
- * 历史与用量属于业务数据，仍各自一份 JSON。
  *
  * 旧键 deepseek-deepsearch-settings（整包 JSON）只在启动时兜底读取，不再写入。
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_BASE, PRICE_PER_1000, clampCount, probeProxy } from './api.js';
 import { deepClone, makeId } from './util.js';
+import {
+  IDB_KEYS,
+  LEGACY_LS_DATA_KEYS,
+  ensureMigrated,
+  idbClearAll,
+  idbGet,
+  idbSet,
+  stripResultContent,
+  storageEvents,
+} from './idb.js';
 
 export const STORAGE_KEYS = {
   key: 'deepseek-deepsearch-key',
   base: 'deepseek-deepsearch-base',
   theme: 'deepseek-deepsearch-theme',
+  // 以下大键仅用于迁移识别 / 文档；运行时读写已迁至 IndexedDB
   history: 'deepseek-deepsearch-history',
   usage: 'deepseek-deepsearch-usage',
   count: 'deepseek-deepsearch-count',
@@ -61,8 +72,10 @@ export const EMPTY_USAGE = {
   searchCalls: 0,
   searchErrors: 0,
   searchResults: 0,
+  searchBillable: 0,
   fetchCalls: 0,
   fetchErrors: 0,
+  fetchBillable: 0,
   fetchChars: 0,
   latencySum: 0,
   latencyCount: 0,
@@ -73,7 +86,7 @@ export const EMPTY_USAGE = {
 
 const HISTORY_LIMIT = 60;
 
-/* ─────────────────────────── 底层读写 ─────────────────────────── */
+/* ─────────────────────────── 底层读写（localStorage：密钥与扁平偏好） ─────────────────────────── */
 
 function readJSON(key, fallback) {
   try {
@@ -91,7 +104,13 @@ function writeJSON(key, value) {
     if (value === undefined || value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, JSON.stringify(value));
     return true;
-  } catch {
+  } catch (err) {
+    storageEvents.emit('error', {
+      reason: err?.name === 'QuotaExceededError' ? 'quota' : 'write_failed',
+      title: err?.name === 'QuotaExceededError' ? '本机存储空间已满' : '本机数据写入失败',
+      text: '偏好或密钥未能写入 localStorage。',
+      error: err,
+    });
     return false;
   }
 }
@@ -159,7 +178,13 @@ function writeText(key, value) {
     if (!value) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
     return true;
-  } catch {
+  } catch (err) {
+    storageEvents.emit('error', {
+      reason: err?.name === 'QuotaExceededError' ? 'quota' : 'write_failed',
+      title: err?.name === 'QuotaExceededError' ? '本机存储空间已满' : '本机数据写入失败',
+      text: '偏好或密钥未能写入 localStorage。',
+      error: err,
+    });
     return false;
   }
 }
@@ -168,25 +193,76 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** 归一化用量；旧数据缺少「有结果才计费」字段时用成功次数兜底一次 */
+export function normalizeUsage(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const next = { ...EMPTY_USAGE, ...src, daily: src.daily && typeof src.daily === 'object' ? src.daily : {} };
+  if (src.searchBillable == null && (src.searchCalls || src.searchErrors)) {
+    next.searchBillable = Math.max(0, (src.searchCalls || 0) - (src.searchErrors || 0));
+  }
+  if (src.fetchBillable == null && (src.fetchCalls || src.fetchErrors)) {
+    next.fetchBillable = Math.max(0, (src.fetchCalls || 0) - (src.fetchErrors || 0));
+  }
+  next.searchBillable = Number(next.searchBillable) || 0;
+  next.fetchBillable = Number(next.fetchBillable) || 0;
+  return next;
+}
+
+function persistHistory(list) {
+  return idbSet(IDB_KEYS.history, list);
+}
+
+function persistUsage(data) {
+  return idbSet(IDB_KEYS.usage, data);
+}
+
 /* ─────────────────────────── Context ─────────────────────────── */
 
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
-  // bootstrap：首帧就同步读入，避免“先空后填”的闪烁
+  // 密钥 / 偏好 / 主题：首帧同步读 LS，避免闪烁
   const [apiKey, setApiKeyState] = useState(() => readText(STORAGE_KEYS.key));
   const [base, setBaseState] = useState(() => readText(STORAGE_KEYS.base, DEFAULT_BASE) || DEFAULT_BASE);
   const [settings, setSettingsState] = useState(readSettings);
-  const [history, setHistoryState] = useState(() => readJSON(STORAGE_KEYS.history, []));
-  const [usage, setUsageState] = useState(() => ({ ...EMPTY_USAGE, ...readJSON(STORAGE_KEYS.usage, {}) }));
+  // 首帧同步读旧 LS 大键作兜底（SSR / 迁移前无闪烁）；正式读写走 IndexedDB
+  const [history, setHistoryState] = useState(() => {
+    const legacy = readJSON(STORAGE_KEYS.history, null);
+    return Array.isArray(legacy) ? legacy : [];
+  });
+  const [usage, setUsageState] = useState(() => normalizeUsage(readJSON(STORAGE_KEYS.usage, {})));
   const [theme, setThemeState] = useState(() => document.documentElement.dataset.theme || 'dark');
   const [proxy, setProxy] = useState({ checked: false, ok: false, upstream: DEFAULT_BASE });
+  /** 数据世代：wipe / 迁移完成后递增，供缓存页等重读 IDB */
+  const [dataEpoch, setDataEpoch] = useState(0);
+  const [storageReady, setStorageReady] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+    };
+  }, []);
+
+  // IndexedDB：迁移旧 LS 大键 → 读入历史与用量
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await ensureMigrated();
+      if (!alive) return;
+      const [h, u] = await Promise.all([
+        idbGet(IDB_KEYS.history, []),
+        idbGet(IDB_KEYS.usage, {}),
+      ]);
+      if (!alive) return;
+      setHistoryState(Array.isArray(h) ? h : []);
+      setUsageState(normalizeUsage(u));
+      setStorageReady(true);
+      setDataEpoch((n) => n + 1);
+    })();
+    return () => {
+      alive = false;
     };
   }, []);
 
@@ -258,18 +334,19 @@ export function AppProvider({ children }) {
     });
   }, []);
 
-  /** 追加一条搜索历史（含结果快照，便于离线回看） */
+  /** 追加一条搜索历史（快照强制清 content，避免长期堆满） */
   const pushHistory = useCallback(
     (entry) => {
       setHistoryState((prev) => {
+        const rawResults = settings.rememberResults ? deepClone(entry.results || []).slice(0, 50) : [];
         const record = {
           id: makeId('h'),
           at: new Date().toISOString(),
           ...entry,
-          results: settings.rememberResults ? deepClone(entry.results || []).slice(0, 50) : [],
+          results: stripResultContent(rawResults),
         };
         const next = [record, ...prev.filter((item) => item.query !== record.query)].slice(0, HISTORY_LIMIT);
-        writeJSON(STORAGE_KEYS.history, next);
+        void persistHistory(next);
         return next;
       });
     },
@@ -279,17 +356,17 @@ export function AppProvider({ children }) {
   const removeHistory = useCallback((id) => {
     setHistoryState((prev) => {
       const next = prev.filter((item) => item.id !== id);
-      writeJSON(STORAGE_KEYS.history, next);
+      void persistHistory(next);
       return next;
     });
   }, []);
 
   const clearHistory = useCallback(() => {
     setHistoryState([]);
-    writeJSON(STORAGE_KEYS.history, []);
+    void persistHistory([]);
   }, []);
 
-  /** 记录一次调用（成功或失败） */
+  /** 记录一次调用（成功或失败）；计费仅统计「有结果」的成功请求 */
   const recordUsage = useCallback((patch) => {
     setUsageState((prev) => {
       const day = todayKey();
@@ -307,6 +384,9 @@ export function AppProvider({ children }) {
       const keys = Object.keys(daily).sort();
       while (keys.length > 30) delete daily[keys.shift()];
 
+      const searchHadResults = patch.kind === 'search' && patch.ok && (patch.resultCount || 0) > 0;
+      const fetchHadContent = patch.kind === 'fetch' && patch.ok && (patch.chars || 0) > 0;
+
       const next = {
         ...prev,
         daily,
@@ -317,18 +397,20 @@ export function AppProvider({ children }) {
         searchErrors: prev.searchErrors + (patch.kind === 'search' && !patch.ok ? 1 : 0),
         fetchErrors: prev.fetchErrors + (patch.kind === 'fetch' && !patch.ok ? 1 : 0),
         searchResults: prev.searchResults + (patch.kind === 'search' && patch.ok ? patch.resultCount || 0 : 0),
+        searchBillable: (prev.searchBillable || 0) + (searchHadResults ? 1 : 0),
+        fetchBillable: (prev.fetchBillable || 0) + (fetchHadContent ? 1 : 0),
         fetchChars: prev.fetchChars + (patch.kind === 'fetch' && patch.ok ? patch.chars || 0 : 0),
         latencySum: prev.latencySum + (Number.isFinite(patch.latencyMs) ? patch.latencyMs : 0),
         latencyCount: prev.latencyCount + (Number.isFinite(patch.latencyMs) ? 1 : 0),
       };
-      writeJSON(STORAGE_KEYS.usage, next);
+      void persistUsage(next);
       return next;
     });
   }, []);
 
   const resetUsage = useCallback(() => {
     setUsageState(EMPTY_USAGE);
-    writeJSON(STORAGE_KEYS.usage, EMPTY_USAGE);
+    void persistUsage(EMPTY_USAGE);
   }, []);
 
   const wipeAll = useCallback(() => {
@@ -337,15 +419,30 @@ export function AppProvider({ children }) {
     setSettingsState(DEFAULT_SETTINGS);
     setHistoryState([]);
     setUsageState(EMPTY_USAGE);
+
+    // localStorage：密钥、偏好、主题以外的遗留大键
     Object.values(STORAGE_KEYS).forEach((key) => {
       if (key !== STORAGE_KEYS.theme) writeText(key, '');
     });
     writeText(LEGACY_SETTINGS_KEY, '');
+    LEGACY_LS_DATA_KEYS.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    });
+
+    // IndexedDB：历史 / 统计 / 缓存 / 最近抓取
+    void idbClearAll().then(() => {
+      if (mounted.current) setDataEpoch((n) => n + 1);
+    });
   }, []);
 
   const derived = useMemo(() => {
     const totalCalls = usage.searchCalls + usage.fetchCalls;
-    const billable = usage.searchCalls - usage.searchErrors + (usage.fetchCalls - usage.fetchErrors);
+    // 官方：成功且产生结果才计费（Search results 非空 / Fetch 有正文）
+    const billable = (usage.searchBillable || 0) + (usage.fetchBillable || 0);
     const avgLatency = usage.latencyCount ? usage.latencySum / usage.latencyCount : 0;
     const errorCount = usage.searchErrors + usage.fetchErrors;
     return {
@@ -401,16 +498,20 @@ export function AppProvider({ children }) {
       resetUsage,
       derived,
 
+      // 存储就绪 / 世代（wipe 后供其它页重读）
+      storageReady,
+      dataEpoch,
+
       // 危险操作
       wipeAll,
     }),
     [
-      // hasKey / keyHint 都由 apiKey 派生，只需把 apiKey 列为依赖
       apiKey, setApiKey, clearApiKey, base, setBase,
       settings, updateSettings, resetSettings,
       theme, toggleTheme, proxy,
       history, pushHistory, removeHistory, clearHistory,
       usage, recordUsage, resetUsage, derived, wipeAll,
+      storageReady, dataEpoch,
     ],
   );
 
@@ -423,7 +524,7 @@ export function useApp() {
   return ctx;
 }
 
-export { readJSON, writeJSON, readText, writeText, HISTORY_LIMIT, PRICE_PER_1000 };
+export { readJSON, writeJSON, readText, writeText, HISTORY_LIMIT, PRICE_PER_1000, IDB_KEYS };
 
 // 本模块导出的是 React Context 本身。热替换会让它重新求值并产生新的 Context 实例，
 // 而已经挂载的 <AppProvider> 仍然持有旧实例，子组件 useContext 就会拿到 null

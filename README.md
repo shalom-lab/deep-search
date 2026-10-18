@@ -7,8 +7,8 @@
 | `POST https://api.deepseek.com/v1/tools/search` | 按 query 搜索网页，返回结构化结果列表（含排序分、权威度、长短摘要） |
 | `POST https://api.deepseek.com/v1/tools/fetch` | 抓取单个网页，返回标题与 Markdown 正文 |
 
-**BYOK（Bring Your Own Key）**：你填入自己的 DeepSeek API Key，密钥只保存在本机浏览器的 `localStorage`，
-请求时直接放进 `Authorization: Bearer` 头。项目里没有账号系统、没有服务端存储、没有第三方中转。
+**BYOK（Bring Your Own Key）**：你填入自己的 DeepSeek API Key，密钥只保存在本机浏览器的 `localStorage`；
+历史、统计与缓存走 `IndexedDB`。请求时密钥直接放进 `Authorization: Bearer` 头。项目里没有账号系统、没有服务端存储、没有第三方中转。
 
 ---
 
@@ -58,7 +58,18 @@ npm run dev          # 打开 http://127.0.0.1:5273/deep-search/
 
 ---
 
-## BYOK：密钥放在哪里
+## 本机持久化：密钥用 localStorage，其余用 IndexedDB
+
+| 介质 | 存放内容 |
+| --- | --- |
+| **localStorage** | API Key 与其它轻量 BYOK / 扁平偏好（基址、主题、开关、排序过滤等） |
+| **IndexedDB**（库名 `deepseek-deepsearch`） | 搜索历史、调用统计、搜索结果缓存、最近抓取列表 |
+
+历史与缓存的结果快照会**强制清空 `content`**，避免正文长期堆满配额；写入失败（存储满 / IndexedDB 不可用）会弹出可见 toast。「清空本机数据」会同时清掉相关 localStorage 键与 IndexedDB 全部业务 store。
+
+首次打开时：若 IndexedDB 为空而旧版 localStorage 里还有历史 / 统计 / 缓存等大键，会**自动迁移一次**，然后删除这些旧大键（密钥与扁平偏好键保留）。
+
+### localStorage 键（BYOK / 偏好）
 
 密钥需要能调用 DeepSeek 的 `POST /v1/tools/search` 与 `POST /v1/tools/fetch`。每一项单独一个键，不合并成 JSON。
 
@@ -67,38 +78,42 @@ npm run dev          # 打开 http://127.0.0.1:5273/deep-search/
 | `deepseek-deepsearch-key` | **API Key** | DeepSeek API Key |
 | `deepseek-deepsearch-base` | API 基址 | 默认 `https://api.deepseek.com` |
 | `deepseek-deepsearch-count` | 默认条数 | `1`–`50` |
-| `deepseek-deepsearch-transport` | 传输方式 | `auto` \| `proxy` \| `direct` |
-| `deepseek-deepsearch-need-content` | 是否请求正文 | `true` \| `false` |
-| `deepseek-deepsearch-deep-intent` | 意图增强 | `true` \| `false` |
+| `deepseek-deepsearch-transport` | 传输方式 | `auto` | `proxy` | `direct` |
+| `deepseek-deepsearch-need-content` | 是否请求正文 | `true` | `false` |
+| `deepseek-deepsearch-deep-intent` | 意图增强 | `true` | `false` |
 | `deepseek-deepsearch-ori-question` | 固定原始问题 | 文本，最多 128 字 |
 | `deepseek-deepsearch-localization` | 本地化 IP | 文本，可空 |
-| `deepseek-deepsearch-record-history` | 记录历史 | `true` \| `false` |
-| `deepseek-deepsearch-remember-results` | 保存结果快照 | `true` \| `false` |
-| `deepseek-deepsearch-highlight` | 关键词高亮 | `true` \| `false` |
-| `deepseek-deepsearch-demo` | 演示模式 | `true` \| `false` |
-| `deepseek-deepsearch-sort` | 排序 | `score` \| `authority` \| `fresh` \| `site` |
-| `deepseek-deepsearch-filter` | 过滤 | `0` \| `1.5` \| `2` \| `auth3` |
-| `deepseek-deepsearch-theme` | 主题 | `dark` \| `light` |
-| `deepseek-deepsearch-history` | 搜索历史 | 业务数据 JSON，最多 60 条 |
-| `deepseek-deepsearch-usage` | 调用统计 | 业务数据 JSON |
-| `deepseek-deepsearch-cache` | 搜索结果缓存 | 业务数据 JSON |
-| `deepseek-deepsearch-fetches` | 最近抓取 | 业务数据 JSON |
+| `deepseek-deepsearch-record-history` | 记录历史 | `true` | `false` |
+| `deepseek-deepsearch-remember-results` | 保存结果快照 | `true` | `false` |
+| `deepseek-deepsearch-highlight` | 关键词高亮 | `true` | `false` |
+| `deepseek-deepsearch-demo` | 演示模式 | `true` | `false` |
+| `deepseek-deepsearch-sort` | 排序 | `score` | `authority` | `fresh` | `site` |
+| `deepseek-deepsearch-filter` | 过滤 | `0` | `1.5` | `2` | `auth3` |
+| `deepseek-deepsearch-theme` | 主题 | `dark` | `light` |
 
-可在 Settings 填写，也可事先写入 localStorage；启动自动读取，不重新验证。手动保存密钥时先验证连接。本应用没有仓库内路径配置。
+### IndexedDB 键（业务数据）
 
-旧键 `deepseek-deepsearch-settings`（整包 JSON）启动时仍会读取，改过任意偏好后会拆成上表的独立键并删除旧键。
+| 键名 | 内容 |
+| --- | --- |
+| `history` | 搜索历史（最多 60 条；快照不含完整 `content`） |
+| `usage` | 调用统计（含「有结果才计费」计数） |
+| `cache` | 当前搜索结果缓存（不含完整 `content`） |
+| `fetches` | 最近抓取元信息（url / title / 字符数，不含正文） |
+
+可在 Settings 填写密钥，也可事先写入 localStorage；启动自动读取，不重新验证。手动保存密钥时先验证连接。本应用没有仓库内 `.env` 或其它密钥落盘路径。
+
+旧键 `deepseek-deepsearch-settings`（整包 JSON）启动时仍会读取，改过任意偏好后会拆成上表的独立键并删除旧键。旧版曾把 `history` / `usage` / `cache` / `fetches` 放在 localStorage，现已迁至 IndexedDB。
 
 ```js
 // 在任何页面加载前执行（例如浏览器控制台，或在宿主页面注入）
 localStorage.setItem('deepseek-deepsearch-key', 'sk-你的密钥');
 ```
 
-应用启动时会**静默读取**这些键：有值就直接可用，不会弹窗打断；设置页只显示掩码后的末四位，从不回显完整密钥。
+应用启动时会**静默读取**密钥与偏好：有值就直接可用，不会弹窗打断；设置页只显示掩码后的末四位，从不回显完整密钥。
 
 密钥流向只有一条：`localStorage` → 请求头 `Authorization: Bearer <key>` → `api.deepseek.com`。
 它**不会**写入仓库、构建产物、`.env`、日志，也不会经过任何第三方中转。
 
----
 
 ## 功能
 

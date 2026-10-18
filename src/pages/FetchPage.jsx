@@ -9,15 +9,8 @@ import { useApp } from '../lib/store.js';
 import { useDrawer } from '../hooks/useAppState.jsx';
 import { downloadText, useUI } from '../components/UIProvider.jsx';
 import { DeepSeekError, describeError, fetchWeb, validateUrl } from '../lib/api.js';
-import { writeJSON, readJSON } from '../lib/store.js';
+import { IDB_KEYS, idbGet, idbSet, ensureMigrated } from '../lib/idb.js';
 import { cx, estimateTokens, formatBytes, formatDuration, hostOf } from '../lib/util.js';
-
-const RECENT_KEY = 'deepseek-deepsearch-fetches';
-
-function loadRecent() {
-  const list = readJSON(RECENT_KEY, []);
-  return Array.isArray(list) ? list.slice(0, 20) : [];
-}
 
 export default function FetchPage() {
   const app = useApp();
@@ -30,7 +23,7 @@ export default function FetchPage() {
   const [url, setUrl] = useState('');
   const [state, setState] = useState({ loading: false, error: null, data: null, elapsedMs: 0, startedAt: 0 });
   const [view, setView] = useState('rendered');
-  const [recent, setRecent] = useState(loadRecent);
+  const [recent, setRecent] = useState([]);
 
   useEffect(() => {
     if (state.loading) {
@@ -39,6 +32,21 @@ export default function FetchPage() {
     }
     return undefined;
   }, [state.loading]);
+
+  // IndexedDB：加载 / wipe 后重读最近抓取（不含正文，仅 url/title/at/chars）
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await ensureMigrated();
+      if (!alive) return;
+      const list = await idbGet(IDB_KEYS.fetches, []);
+      if (!alive) return;
+      setRecent(Array.isArray(list) ? list.slice(0, 20) : []);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [app.dataEpoch]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -90,7 +98,7 @@ export default function FetchPage() {
       const entry = { url: value, title: data.title, at: new Date().toISOString(), chars: data.chars };
       const next = [entry, ...recent.filter((r) => r.url !== value)].slice(0, 20);
       setRecent(next);
-      writeJSON(RECENT_KEY, next);
+      void idbSet(IDB_KEYS.fetches, next);
 
       toast({
         tone: 'ok',

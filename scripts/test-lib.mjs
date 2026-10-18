@@ -20,6 +20,123 @@ globalThis.localStorage = {
 globalThis.window = globalThis;
 globalThis.document = { documentElement: { dataset: {} }, createElement: () => ({ style: {} }) };
 
+
+/* ───────── IndexedDB 内存打桩（历史/缓存走 IDB） ───────── */
+(function stubIndexedDB() {
+  const dbs = new Map();
+  class MemReq {
+    constructor() {
+      this.result = undefined;
+      this.error = null;
+      this.onsuccess = null;
+      this.onerror = null;
+    }
+    _ok(value) {
+      this.result = value;
+      Promise.resolve().then(() => this.onsuccess?.({ target: this }));
+    }
+    _fail(err) {
+      this.error = err;
+      Promise.resolve().then(() => this.onerror?.({ target: this }));
+    }
+  }
+  class MemStore {
+    constructor(map) {
+      this._map = map;
+    }
+    get(key) {
+      const req = new MemReq();
+      req._ok(this._map.has(key) ? this._map.get(key) : undefined);
+      return req;
+    }
+    put(value, key) {
+      const req = new MemReq();
+      this._map.set(key, value);
+      req._ok(key);
+      return req;
+    }
+    delete(key) {
+      const req = new MemReq();
+      this._map.delete(key);
+      req._ok(undefined);
+      return req;
+    }
+    clear() {
+      const req = new MemReq();
+      this._map.clear();
+      req._ok(undefined);
+      return req;
+    }
+  }
+  class MemTx {
+    constructor(map, mode) {
+      this._map = map;
+      this.mode = mode;
+      this._complete = null;
+      this.onerror = null;
+      this.onabort = null;
+      this._done = false;
+      Promise.resolve().then(() => {
+        this._done = true;
+        this._complete?.();
+      });
+    }
+    get oncomplete() {
+      return this._complete;
+    }
+    set oncomplete(fn) {
+      this._complete = fn;
+      if (this._done && fn) fn();
+    }
+    objectStore() {
+      return new MemStore(this._map);
+    }
+  }
+  class MemDb {
+    constructor(name, storeMap) {
+      this.name = name;
+      this.objectStoreNames = {
+        _names: new Set(storeMap.keys()),
+        contains(n) { return this._names.has(n); },
+      };
+      this._stores = storeMap;
+    }
+    transaction(storeName) {
+      if (!this._stores.has(storeName)) this._stores.set(storeName, new Map());
+      return new MemTx(this._stores.get(storeName));
+    }
+    createObjectStore(name) {
+      if (!this._stores.has(name)) this._stores.set(name, new Map());
+      this.objectStoreNames._names.add(name);
+      return new MemStore(this._stores.get(name));
+    }
+  }
+  globalThis.indexedDB = {
+    open(name, version) {
+      const req = new MemReq();
+      req.onupgradeneeded = null;
+      req.onblocked = null;
+      Promise.resolve().then(() => {
+        let entry = dbs.get(name);
+        const isNew = !entry;
+        if (!entry) {
+          entry = { version: version || 1, stores: new Map() };
+          dbs.set(name, entry);
+        }
+        const db = new MemDb(name, entry.stores);
+        req.result = db;
+        if (isNew || (version && version > entry.version)) {
+          entry.version = version || entry.version;
+          req.onupgradeneeded?.({ target: req });
+        }
+        req.onsuccess?.({ target: req });
+      });
+      return req;
+    },
+  };
+})();
+
+
 const api = await import('../src/lib/api.js');
 const util = await import('../src/lib/util.js');
 const md = await import('../src/lib/markdown.js');
@@ -280,10 +397,30 @@ test('网络错误提示跨域，并说明如何恢复', async () => {
     () => api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'direct' }),
     (err) => {
       assert.equal(err.code, 'cors');
-      assert.match(api.describeError(err).hint, /npm run dev|CORS|跨域/);
+      assert.match(api.describeError(err).hint, /npm run dev|CORS|跨域|Pages|演示模式/);
       return true;
     },
   );
+});
+
+test('corsHintForHost 按 hostname 分流 Pages 与本地', () => {
+  assert.match(api.corsHintForHost('shalom-lab.github.io'), /GitHub Pages|演示模式|npm run dev/);
+  assert.match(api.corsHintForHost('localhost'), /npm run dev|同源转发/);
+  assert.match(api.corsHintForHost('127.0.0.1'), /npm run dev|同源转发/);
+});
+
+test('stripResultContent / normalizeUsage：快照清 content、有结果才计费', async () => {
+  const idb = await import('../src/lib/idb.js');
+  const store = await import('../src/lib/store.js');
+  const stripped = idb.stripResultContent([{ title: 'a', content: 'HUGE' }, null]);
+  assert.equal(stripped[0].content, '');
+  assert.equal(stripped[0].title, 'a');
+  const usage = store.normalizeUsage({ searchCalls: 5, searchErrors: 1, fetchCalls: 3, fetchErrors: 0 });
+  assert.equal(usage.searchBillable, 4);
+  assert.equal(usage.fetchBillable, 3);
+  const fresh = store.normalizeUsage({ searchCalls: 2, searchErrors: 0, searchBillable: 1, fetchCalls: 1, fetchErrors: 0, fetchBillable: 0 });
+  assert.equal(fresh.searchBillable, 1);
+  assert.equal(fresh.fetchBillable, 0);
 });
 
 test('缺少 API Key 时直接报 unauthorized，不发请求', async () => {

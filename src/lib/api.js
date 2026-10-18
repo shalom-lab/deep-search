@@ -70,7 +70,8 @@ export const ERROR_META = {
   },
   cors: {
     label: '跨域被拦截',
-    hint: '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请通过本地开发服务器（npm run dev）访问，或把传输方式设为“自动”。',
+    // hint 由 describeError → corsHintForHost() 按 hostname 分流覆盖
+    hint: '浏览器直连 api.deepseek.com 被 CORS 策略拦截。',
     retryable: false,
   },
   aborted: { label: '已取消', hint: '请求被取消。', retryable: false },
@@ -121,14 +122,34 @@ export function statusToCode(status) {
   }
 }
 
+/** 按当前 hostname 分流 CORS / 网络提示（Pages 静态站 vs 本地开发）。 */
+export function corsHintForHost(hostname) {
+  const rawHost = hostname ?? (typeof location !== 'undefined' ? location.hostname : '');
+  const host = String(rawHost || '').toLowerCase();
+  const isPages = host.endsWith('.github.io') || host === 'github.io';
+  if (isPages) {
+    return '当前是 GitHub Pages 静态站点，没有本地转发中间件。请开启演示模式体验，或在本机用 npm run dev / npm start（带同源转发）访问。';
+  }
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+    return '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请确认已用 npm run dev / npm start 启动（含同源转发），或把传输方式设为“自动”。';
+  }
+  return '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请通过带同源转发的本地服务（npm run dev / npm start）访问，或把传输方式设为“自动”。';
+}
+
 export function describeError(error) {
   const code = error?.code || 'server_error';
   const meta = ERROR_META[code] || ERROR_META.server_error;
   const statusPart = error?.status ? `HTTP ${error.status}` : '请求失败';
+  let hint = meta.hint;
+  if (code === 'cors' || code === 'network') {
+    // network 在直连失败时也可能是 CORS；Pages 上统一给可操作建议
+    const hostHint = corsHintForHost();
+    hint = code === 'cors' ? hostHint : `${meta.hint} ${hostHint}`;
+  }
   return {
     code,
     label: meta.label,
-    hint: meta.hint,
+    hint,
     retryable: Boolean(meta.retryable),
     status: error?.status ?? null,
     action: meta.action || null,

@@ -2,11 +2,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { DeepSeekError, searchWeb, describeError, validateQuery } from '../lib/api.js';
 import { useApp } from '../lib/store.js';
-import { readJSON, writeJSON } from '../lib/store.js';
+import { IDB_KEYS, idbSet, idbGet, ensureMigrated, stripResultContent, storageEvents } from '../lib/idb.js';
 import { deepClone, makeId } from '../lib/util.js';
 import { useUI } from '../components/UIProvider.jsx';
-
-const CACHE_KEY = 'deepseek-deepsearch-cache';
 
 const SEARCH_INIT = {
   query: '',
@@ -26,12 +24,61 @@ export function AppStateProvider({ children }) {
   const app = useApp();
   const { toast } = useUI();
   const [search, setSearch] = useState(() => {
-    const cached = readJSON(CACHE_KEY, null);
-    if (!cached?.query) return SEARCH_INIT;
-    return { ...SEARCH_INIT, query: cached.query, results: Array.isArray(cached.results) ? cached.results : [], meta: cached.meta || null };
+    // 首帧：旧 LS 缓存兜底（SSR / 迁移前）；之后由 IDB effect 接管
+    try {
+      const raw = localStorage.getItem('deepseek-deepsearch-cache');
+      if (!raw) return SEARCH_INIT;
+      const cached = JSON.parse(raw);
+      if (!cached?.query) return SEARCH_INIT;
+      return {
+        ...SEARCH_INIT,
+        query: cached.query,
+        results: Array.isArray(cached.results) ? stripResultContent(cached.results) : [],
+        meta: cached.meta || null,
+      };
+    } catch {
+      return SEARCH_INIT;
+    }
   });
   const abortRef = useRef(null);
   const tickRef = useRef(null);
+  const cacheHydrated = useRef(false);
+
+  // 存储失败 → 可见 toast
+  useEffect(() => {
+    return storageEvents.on('error', (payload) => {
+      toast({
+        tone: 'err',
+        title: payload?.title || '本机数据写入失败',
+        text: payload?.text || '历史或缓存未能保存。',
+        duration: 8000,
+      });
+    });
+  }, [toast]);
+
+  // 从 IndexedDB 恢复搜索缓存（迁移完成后）
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await ensureMigrated();
+      if (!alive) return;
+      const cached = await idbGet(IDB_KEYS.cache, null);
+      if (!alive || !cached?.query || cacheHydrated.current) return;
+      cacheHydrated.current = true;
+      setSearch((prev) => {
+        if (prev.query || prev.loading) return prev;
+        return {
+          ...SEARCH_INIT,
+          query: cached.query,
+          results: Array.isArray(cached.results) ? stripResultContent(cached.results) : [],
+          meta: cached.meta || null,
+        };
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [app.dataEpoch]);
 
   // 请求进行中让“已用时”走字
   useEffect(() => {
@@ -52,11 +99,11 @@ export function AppStateProvider({ children }) {
     };
   }, [search.loading, search.startedAt]);
 
-  // 只缓存轻量元信息 + 结果快照（去掉可能很大的 content）
+  // 只缓存轻量元信息 + 结果快照（强制去掉 content）
   useEffect(() => {
     if (!search.query || search.loading) return;
-    const light = search.results.map((r) => ({ ...r, content: '' }));
-    writeJSON(CACHE_KEY, { query: search.query, results: light, meta: search.meta });
+    const light = stripResultContent(search.results);
+    void idbSet(IDB_KEYS.cache, { query: search.query, results: light, meta: search.meta });
   }, [search.query, search.results, search.meta, search.loading]);
 
   const cancel = useCallback(() => {
@@ -200,7 +247,8 @@ export function AppStateProvider({ children }) {
     abortRef.current?.abort();
     abortRef.current = null;
     setSearch(SEARCH_INIT);
-    writeJSON(CACHE_KEY, null);
+    cacheHydrated.current = true;
+    void idbSet(IDB_KEYS.cache, null);
   }, []);
 
   /* ── 详情抽屉 ── */

@@ -17,6 +17,8 @@ const browserGlobals = {
   location: 'readonly',
   localStorage: 'readonly',
   sessionStorage: 'readonly',
+  indexedDB: 'readonly',
+  IDBKeyRange: 'readonly',
   fetch: 'readonly',
   performance: 'readonly',
   crypto: 'readonly',

@@ -321,7 +321,7 @@ export default function SettingsPage() {
             checked={s.recordHistory}
             onChange={(v) => set({ recordHistory: v })}
             title="记录搜索历史"
-            desc="保存查询与时间（最多 60 条）到本机 localStorage。"
+            desc="保存查询与时间（最多 60 条）到本机 IndexedDB。"
           />
           <Toggle
             id="optRemember"
@@ -373,7 +373,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="field-foot">
-          <span className="hint">所有数据都只存在本机浏览器，没有账号、没有服务端存储。</span>
+          <span className="hint">密钥在 localStorage；历史 / 统计 / 缓存在 IndexedDB。没有账号、没有服务端存储。</span>
           <div className="btn-group">
             <button type="button" className="btn ghost sm" onClick={exportSettings}>
               导出设置
@@ -422,7 +422,7 @@ export default function SettingsPage() {
         <div className="danger-zone">
           <div>
             <h3>清空本机数据</h3>
-            <p className="muted">移除密钥、基址、偏好、搜索历史与统计（不可恢复）</p>
+            <p className="muted">移除密钥、基址、偏好、搜索历史、统计、缓存与最近抓取（不可恢复）</p>
           </div>
           <button
             type="button"
@@ -431,7 +431,7 @@ export default function SettingsPage() {
               if (
                 await confirm({
                   title: '清空全部本机数据？',
-                  text: '密钥、设置、搜索历史与用量统计都会被删除，且无法恢复。',
+                  text: '密钥、设置、搜索历史、用量统计、搜索缓存与最近抓取都会被删除，且无法恢复。',
                   okLabel: '全部清空',
                 })
               ) {

@@ -16,6 +16,26 @@ globalThis.localStorage = {
 };
 
 globalThis.window = globalThis;
+if (!globalThis.location || typeof globalThis.location !== 'object') {
+  globalThis.location = {
+    href: 'http://127.0.0.1:5273/deep-search/',
+    origin: 'http://127.0.0.1:5273',
+    protocol: 'http:',
+    host: '127.0.0.1:5273',
+    hostname: '127.0.0.1',
+    port: '5273',
+    pathname: '/deep-search/',
+    search: '',
+    hash: '',
+    assign() {},
+    replace() {},
+    reload() {},
+  };
+}
+if (globalThis.window && !globalThis.window.location) {
+  globalThis.window.location = globalThis.location;
+}
+
 
 const mql = () => ({
   matches: false,
@@ -31,9 +51,25 @@ const mql = () => ({
 globalThis.matchMedia = mql;
 if (globalThis.window !== globalThis) globalThis.window.matchMedia = mql;
 
-// Node 22 已有 navigator，这里只在缺失时补一个（剪贴板接口）
+// Node 可能已有残缺 navigator；补齐 React / recharts 需要的字段
+const navPatch = {
+  clipboard: { writeText: async () => {} },
+  userAgent: 'Mozilla/5.0 (DeepSearchTest) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+  language: 'zh-CN',
+  languages: ['zh-CN', 'en'],
+};
 if (!globalThis.navigator) {
-  globalThis.navigator = { clipboard: { writeText: async () => {} } };
+  globalThis.navigator = { ...navPatch };
+} else {
+  for (const [k, v] of Object.entries(navPatch)) {
+    if (globalThis.navigator[k] == null) {
+      try {
+        Object.defineProperty(globalThis.navigator, k, { value: v, configurable: true });
+      } catch {
+        /* 只读属性则忽略 */
+      }
+    }
+  }
 }
 
 globalThis.document = {
@@ -49,5 +85,121 @@ globalThis.document = {
 
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || ((cb) => setTimeout(() => cb(0), 0));
 globalThis.cancelAnimationFrame = globalThis.cancelAnimationFrame || ((id) => clearTimeout(id));
+
+
+/* ───────── IndexedDB 内存打桩（历史/缓存走 IDB） ───────── */
+(function stubIndexedDB() {
+  const dbs = new Map();
+  class MemReq {
+    constructor() {
+      this.result = undefined;
+      this.error = null;
+      this.onsuccess = null;
+      this.onerror = null;
+    }
+    _ok(value) {
+      this.result = value;
+      Promise.resolve().then(() => this.onsuccess?.({ target: this }));
+    }
+    _fail(err) {
+      this.error = err;
+      Promise.resolve().then(() => this.onerror?.({ target: this }));
+    }
+  }
+  class MemStore {
+    constructor(map) {
+      this._map = map;
+    }
+    get(key) {
+      const req = new MemReq();
+      req._ok(this._map.has(key) ? this._map.get(key) : undefined);
+      return req;
+    }
+    put(value, key) {
+      const req = new MemReq();
+      this._map.set(key, value);
+      req._ok(key);
+      return req;
+    }
+    delete(key) {
+      const req = new MemReq();
+      this._map.delete(key);
+      req._ok(undefined);
+      return req;
+    }
+    clear() {
+      const req = new MemReq();
+      this._map.clear();
+      req._ok(undefined);
+      return req;
+    }
+  }
+  class MemTx {
+    constructor(map, mode) {
+      this._map = map;
+      this.mode = mode;
+      this._complete = null;
+      this.onerror = null;
+      this.onabort = null;
+      this._done = false;
+      Promise.resolve().then(() => {
+        this._done = true;
+        this._complete?.();
+      });
+    }
+    get oncomplete() {
+      return this._complete;
+    }
+    set oncomplete(fn) {
+      this._complete = fn;
+      if (this._done && fn) fn();
+    }
+    objectStore() {
+      return new MemStore(this._map);
+    }
+  }
+  class MemDb {
+    constructor(name, storeMap) {
+      this.name = name;
+      this.objectStoreNames = {
+        _names: new Set(storeMap.keys()),
+        contains(n) { return this._names.has(n); },
+      };
+      this._stores = storeMap;
+    }
+    transaction(storeName) {
+      if (!this._stores.has(storeName)) this._stores.set(storeName, new Map());
+      return new MemTx(this._stores.get(storeName));
+    }
+    createObjectStore(name) {
+      if (!this._stores.has(name)) this._stores.set(name, new Map());
+      this.objectStoreNames._names.add(name);
+      return new MemStore(this._stores.get(name));
+    }
+  }
+  globalThis.indexedDB = {
+    open(name, version) {
+      const req = new MemReq();
+      req.onupgradeneeded = null;
+      req.onblocked = null;
+      Promise.resolve().then(() => {
+        let entry = dbs.get(name);
+        const isNew = !entry;
+        if (!entry) {
+          entry = { version: version || 1, stores: new Map() };
+          dbs.set(name, entry);
+        }
+        const db = new MemDb(name, entry.stores);
+        req.result = db;
+        if (isNew || (version && version > entry.version)) {
+          entry.version = version || entry.version;
+          req.onupgradeneeded?.({ target: req });
+        }
+        req.onsuccess?.({ target: req });
+      });
+      return req;
+    },
+  };
+})();
 
 export { store };
