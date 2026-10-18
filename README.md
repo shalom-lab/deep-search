@@ -229,10 +229,10 @@ DeepSeek 模型 site:github.com OR site:huggingface.co lang:zh after:2025
 | 402 | 余额不足 | 提示充值，不重试 |
 | 403 | 被安全策略拒绝（Fetch） | 提示换来源 |
 | 404 | 未获取到可用内容 | 说明 URL/内容类型/正文提取失败的可能 |
-| 408 / 504 | 超时 | 可重试 |
+| 408 / 504 | 超时 | 自动退避重试 1 次（可取消），仍失败再提示 |
 | 413 | 请求体过大 | 不可重试 |
-| 429 | 超过 QPS | 可重试，并透传 `Retry-After` |
-| 5xx | 服务端错误 | 可重试 |
+| 429 | 超过 QPS | 按 `Retry-After` 退避后自动重试 1 次（可取消） |
+| 5xx | 服务端错误 | 自动退避重试 1 次（可取消），仍失败再提示 |
 
 **限速**：Search 与 Fetch 各自独立限速 **5 QPS**（按账号计算，与用哪个 Key 无关）；Fetch 对单个目标域名另有 QPS 限制。
 
@@ -248,7 +248,7 @@ DeepSeek 模型 site:github.com OR site:huggingface.co lang:zh after:2025
 deepsearch/
 ├── .github/workflows/pages.yml # GitHub Pages：verify → build → deploy-pages
 ├── index.html                  # Vite 入口（主题在首帧前定好，避免闪烁）
-├── vite.config.js              # base=/deep-search/ + 代理中间件 + SPA 回退
+├── vite.config.js              # base=/deep-search/ + 代理中间件 + 404.html SPA 回退
 ├── eslint.config.js            # ESLint：no-undef / no-unused-vars（含浏览器全局声明）
 ├── server/
 │   ├── deepseekProxy.js        # 无状态转发：白名单 + Authorization 透传（仅本地）

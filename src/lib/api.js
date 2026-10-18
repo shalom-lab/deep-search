@@ -199,6 +199,49 @@ function parseRetryAfter(res) {
   return Math.max(0, Math.round((when - Date.now()) / 1000));
 }
 
+/** 429 / 5xx / timeout：最多自动退避重试 1 次（可被 AbortSignal 取消）。 */
+const AUTO_RETRY_CODES = new Set(['rate_limited', 'timeout', 'server_error', 'gateway_timeout']);
+const AUTO_RETRY_DEFAULT_MS = 600;
+const AUTO_RETRY_MAX_MS = 30_000;
+
+function backoffMs(err) {
+  const sec = err?.retryAfter;
+  if (sec != null && Number.isFinite(sec)) {
+    return Math.min(AUTO_RETRY_MAX_MS, Math.max(0, Math.round(sec * 1000)));
+  }
+  return AUTO_RETRY_DEFAULT_MS;
+}
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DeepSeekError('aborted', '请求已取消'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DeepSeekError('aborted', '请求已取消'));
+    };
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function realCallWithAutoRetry(args) {
+  try {
+    return await realCall(args);
+  } catch (err) {
+    const error = err instanceof DeepSeekError ? err : new DeepSeekError('network', err?.message || String(err));
+    if (error.code === 'aborted' || args.signal?.aborted) throw error;
+    if (!AUTO_RETRY_CODES.has(error.code)) throw error;
+    await sleep(backoffMs(error), args.signal);
+    return await realCall(args);
+  }
+}
+
 async function readErrorMessage(res) {
   try {
     const text = await res.text();
@@ -258,7 +301,7 @@ export async function callTool(params) {
     try {
       const payload = demo
         ? await demoCall(path, body, signal)
-        : await realCall({ path, body, apiKey, base, mode, signal, timeoutMs });
+        : await realCallWithAutoRetry({ path, body, apiKey, base, mode, signal, timeoutMs });
       return {
         ...payload,
         transport: demo ? 'demo' : mode,

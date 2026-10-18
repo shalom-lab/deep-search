@@ -409,6 +409,73 @@ test('corsHintForHost 按 hostname 分流 Pages 与本地', () => {
   assert.match(api.corsHintForHost('127.0.0.1'), /npm run dev|同源转发/);
 });
 
+const retryResponse = (status, payload, retryAfter = '0') =>
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Retry-After': String(retryAfter) },
+  });
+
+test('429 带 Retry-After 时自动退避并重试 1 次后成功', async () => {
+  let n = 0;
+  const calls = stubFetch(() => {
+    n += 1;
+    if (n === 1) return retryResponse(429, { error: { message: 'rate limited' } }, '0');
+    return jsonResponse(200, { results: [] });
+  });
+  const out = await api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'proxy', proxyAvailable: true });
+  assert.equal(calls.length, 2);
+  assert.equal(out.results.length, 0);
+  assert.equal(out.transport, 'proxy');
+});
+
+test('429 重试仍失败则抛出 rate_limited（共 2 次请求）', async () => {
+  const calls = stubFetch(() => retryResponse(429, { error: { message: 'still limited' } }, '0'));
+  await assert.rejects(
+    () => api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'proxy', proxyAvailable: true }),
+    (err) => {
+      assert.equal(err.code, 'rate_limited');
+      assert.equal(err.status, 429);
+      assert.equal(err.retryAfter, 0);
+      return true;
+    },
+  );
+  assert.equal(calls.length, 2);
+});
+
+test('5xx 自动重试 1 次；400 不自动重试', async () => {
+  let n = 0;
+  const calls5 = stubFetch(() => {
+    n += 1;
+    if (n === 1) return retryResponse(503, { error: { message: 'unavailable' } }, '0');
+    return jsonResponse(200, { results: [{ title: 'ok', url: 'https://a.com', snippet: 's', summary: 'S', content: '', site_name: 'A', date: null, authority: 1, rerank_score: 1 }] });
+  });
+  const out = await api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'proxy', proxyAvailable: true });
+  assert.equal(calls5.length, 2);
+  assert.equal(out.results.length, 1);
+
+  const calls400 = stubFetch(() => jsonResponse(400, { error: { message: 'bad' } }));
+  await assert.rejects(
+    () => api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'proxy', proxyAvailable: true }),
+    (err) => err.code === 'invalid_request',
+  );
+  assert.equal(calls400.length, 1);
+});
+
+test('退避等待期间 AbortSignal 可取消自动重试', async () => {
+  const controller = new AbortController();
+  stubFetch(() => retryResponse(429, { error: { message: 'rate limited' } }, '30'));
+  const pending = api.searchWeb({
+    query: 'x',
+    apiKey: 'sk-k',
+    transport: 'proxy',
+    proxyAvailable: true,
+    signal: controller.signal,
+  });
+  await new Promise((r) => setTimeout(r, 30));
+  controller.abort();
+  await assert.rejects(pending, (err) => err.code === 'aborted');
+});
+
 test('stripResultContent / normalizeUsage：快照清 content、有结果才计费', async () => {
   const idb = await import('../src/lib/idb.js');
   const store = await import('../src/lib/store.js');

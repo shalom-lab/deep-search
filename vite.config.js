@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -24,24 +24,17 @@ function deepseekProxyPlugin() {
 }
 
 /**
- * Pages 没有服务端 rewrite：复制 SPA shell，让直链与刷新也能落到应用。
- * 本应用用 HashRouter，深链主要靠 #/路由；404.html 仍覆盖无 hash 的路径访问。
+ * HashRouter 深链靠 #/路由，无需为 /fetch /history /settings 再复制 index.html。
+ * 仍生成 404.html：覆盖无 hash 的路径直链（GitHub Pages 自定义 404 → SPA shell）。
  */
-function spaFallbackPlugin(routes = ['fetch', 'history', 'settings']) {
+function spaFallbackPlugin() {
   return {
     name: 'deepsearch-spa-fallback',
     apply: 'build',
     enforce: 'post',
     writeBundle(outputOptions) {
       const dist = resolve(outputOptions.dir || 'dist');
-      const index = join(dist, 'index.html');
-      const html = readFileSync(index, 'utf8');
-      copyFileSync(index, join(dist, '404.html'));
-      for (const route of routes) {
-        const dir = join(dist, route);
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, 'index.html'), html);
-      }
+      copyFileSync(join(dist, 'index.html'), join(dist, '404.html'));
     },
   };
 }
