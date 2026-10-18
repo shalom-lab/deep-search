@@ -1,7 +1,7 @@
 /** 侧栏：品牌、主导航、最近搜索、密钥状态。 */
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { IconBook, IconGlobe, IconHistory, IconMoon, IconSearch, IconSettings, IconSun } from '../components/Icon.jsx';
+import { IconGlobe, IconHistory, IconMoon, IconSearch, IconSettings, IconSun } from '../components/Icon.jsx';
 import { useApp } from '../lib/store.js';
 import { useSearchSession } from '../hooks/useAppState.jsx';
 import { cx, formatRelative } from '../lib/util.js';
@@ -120,23 +120,12 @@ export default function Sidebar({ open, onNavigate }) {
           <button
             type="button"
             className="icon-btn"
-            title={`切换到${app.theme === 'dark' ? '浅色' : '深色'}主题 (Ctrl+J)`}
-            aria-label="切换主题"
+            title={app.theme === 'dark' ? '当前深色主题，点击切换到浅色 (Ctrl+J)' : '当前浅色主题，点击切换到深色 (Ctrl+J)'}
+            aria-label={app.theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
             onClick={app.toggleTheme}
           >
-            <IconMoon size={17} />
-            <IconSun size={17} />
+            {app.theme === 'dark' ? <IconMoon size={17} /> : <IconSun size={17} />}
           </button>
-          <a
-            className="icon-btn"
-            href="https://api-docs.deepseek.com/zh-cn/guides/search/"
-            target="_blank"
-            rel="noopener noreferrer"
-            title="DeepSeek 网页搜索与抓取指南"
-            aria-label="接口文档"
-          >
-            <IconBook size={17} />
-          </a>
         </div>
       </div>
     </aside>
