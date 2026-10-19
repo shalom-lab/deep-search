@@ -535,13 +535,25 @@ mark.hl {
   background: var(--surface);
   border-color: var(--border);
   color: var(--text-2);
+  box-shadow: none;
 }
 .btn.ghost:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-2); color: var(--text); }
-.btn.ghost.danger { color: var(--danger); }
-.btn.ghost.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
-.btn.danger { background: var(--danger); color: #fff; }
-.btn.danger:hover:not(:disabled) { filter: brightness(1.08); }
-.btn.sm { padding: 4px 10px; font-size: 12px; }
+/* ghost+danger 必须压过 .btn.danger 的实心底，否则红底+红字会变成空白红钮 */
+.btn.ghost.danger {
+  color: var(--danger);
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  box-shadow: none;
+}
+.btn.ghost.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn.danger:not(.ghost) { background: var(--danger); color: #fff; }
+.btn.danger:not(.ghost):hover:not(:disabled) { filter: brightness(1.08); }
+.btn.sm { padding: 4px 10px; font-size: 12px; min-height: 28px; }
+.btn.primary.sm { box-shadow: 0 2px 8px -4px var(--accent-ring); }
 .btn.block { width: 100%; }
 
 .kbd-hint {
@@ -1544,20 +1556,26 @@ mark.hl {
 .banner {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 11px 15px;
-  border-radius: var(--r-md);
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--accent-ring);
   background: var(--accent-soft);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--text-2);
-  margin-bottom: var(--sp-4);
+  margin-bottom: var(--sp-3);
 }
-.banner.warn { border-color: rgb(251 191 36 / 0.4); background: rgb(251 191 36 / 0.1); }
-.banner svg { flex: 0 0 auto; color: var(--accent); }
+.banner.warn {
+  border-color: rgb(251 191 36 / 0.32);
+  background: rgb(251 191 36 / 0.07);
+}
+.banner svg { flex: 0 0 auto; color: var(--accent); width: 14px; height: 14px; }
 .banner.warn svg { color: var(--warn); }
-.banner .b-actions { margin-left: auto; display: flex; gap: 7px; flex: 0 0 auto; }
-.banner strong { color: var(--text); }
+.banner .b-actions { margin-left: auto; display: flex; gap: 5px; flex: 0 0 auto; align-items: center; }
+.banner .b-actions .mini-btn { padding: 2px 7px; font-size: 11px; }
+.banner strong { color: var(--text); font-weight: 600; }
+.banner code { font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

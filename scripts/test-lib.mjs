@@ -404,7 +404,9 @@ test('网络错误提示跨域，并说明如何恢复', async () => {
 });
 
 test('corsHintForHost 按 hostname 分流 Pages 与本地', () => {
-  assert.match(api.corsHintForHost('shalom-lab.github.io'), /GitHub Pages|演示模式|npm run dev/);
+  assert.match(api.corsHintForHost('shalom-lab.github.io'), /CORS|演示模式|npm run dev|Worker|反代/);
+  assert.equal(api.isGitHubPagesHost('shalom-lab.github.io'), true);
+  assert.equal(api.isGitHubPagesHost('localhost'), false);
   assert.match(api.corsHintForHost('localhost'), /npm run dev|同源转发/);
   assert.match(api.corsHintForHost('127.0.0.1'), /npm run dev|同源转发/);
 });

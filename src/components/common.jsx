@@ -293,7 +293,7 @@ export function Banner({ tone = 'info', icon, children, actions }) {
   const Ico = icon || IconSpark;
   return (
     <div className={cx('banner', tone === 'warn' && 'warn')}>
-      <Ico size={17} />
+      <Ico size={14} />
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
       {actions ? <div className="b-actions">{actions}</div> : null}
     </div>

@@ -153,6 +153,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 className="btn ghost sm danger"
+                title="清除已保存的 API Key"
                 disabled={saving || !app.hasKey}
                 onClick={async () => {
                   if (await confirm({ title: '清除已保存的 API Key？', text: '清除后需要重新填写才能发起真实请求。', okLabel: '清除' })) {
@@ -161,6 +162,7 @@ export default function SettingsPage() {
                   }
                 }}
               >
+                <IconTrash size={13} />
                 清除
               </button>
             </div>

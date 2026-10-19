@@ -122,14 +122,20 @@ export function statusToCode(status) {
   }
 }
 
-/** 按当前 hostname 分流 CORS / 网络提示（Pages 静态站 vs 本地开发）。 */
-export function corsHintForHost(hostname) {
+/** 是否为 GitHub Pages 静态托管（无本地转发中间件）。 */
+export function isGitHubPagesHost(hostname) {
   const rawHost = hostname ?? (typeof location !== 'undefined' ? location.hostname : '');
   const host = String(rawHost || '').toLowerCase();
-  const isPages = host.endsWith('.github.io') || host === 'github.io';
-  if (isPages) {
-    return '当前是 GitHub Pages 静态站点，没有本地转发中间件。请开启演示模式体验，或在本机用 npm run dev / npm start（带同源转发）访问。';
+  return host.endsWith('.github.io') || host === 'github.io';
+}
+
+/** 按当前 hostname 分流 CORS / 网络提示（Pages 静态站 vs 本地开发）。 */
+export function corsHintForHost(hostname) {
+  if (isGitHubPagesHost(hostname)) {
+    return '当前是 GitHub Pages 静态站，无法关闭上游 CORS。请开演示模式，或本机 npm run dev / npm start，或自建 Worker/反代后再直连。';
   }
+  const rawHost = hostname ?? (typeof location !== 'undefined' ? location.hostname : '');
+  const host = String(rawHost || '').toLowerCase();
   if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
     return '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请确认已用 npm run dev / npm start 启动（含同源转发），或把传输方式设为“自动”。';
   }

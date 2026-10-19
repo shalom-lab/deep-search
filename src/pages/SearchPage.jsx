@@ -14,6 +14,7 @@ import {
   dedupeResults, exportFilename, filterResults, groupBySite, sortResults, summarize, toCSV, toJSONExport, toMarkdown,
 } from '../lib/results.js';
 import { formatDuration } from '../lib/util.js';
+import { isGitHubPagesHost } from '../lib/api.js';
 
 function ExportMenu({ results, meta, compact }) {
   const { toast } = useUI();
@@ -135,6 +136,7 @@ export default function SearchPage() {
 
   const hasResults = session.results.length > 0;
   const showBanner = !app.settings.demo && (!app.hasKey || !app.proxy.ok);
+  const onPages = isGitHubPagesHost();
 
   return (
     <>
@@ -148,29 +150,50 @@ export default function SearchPage() {
                   填写 API Key
                 </button>
                 <button type="button" className="mini-btn" onClick={() => app.updateSettings({ demo: true })}>
-                  用演示数据体验
+                  演示模式
                 </button>
               </>
             }
           >
-            <strong>尚未配置 API Key。</strong> 本应用采用 BYOK（Bring Your Own Key）：密钥只保存在本机浏览器 localStorage，直接随请求发给 DeepSeek，不经过任何第三方。
+            <strong>尚未配置 API Key。</strong> BYOK：密钥只存本机 localStorage，请求时直发给 DeepSeek。
           </Banner>
         ) : (
           <Banner
             tone="warn"
             icon={IconNet}
             actions={
-              <>
-                <button type="button" className="mini-btn accent" onClick={() => app.recheckProxy()}>
-                  <IconRefresh size={13} /> 重新检测
-                </button>
-                <button type="button" className="mini-btn" onClick={() => navigate('/settings')}>
-                  传输设置
-                </button>
-              </>
+              onPages ? (
+                <>
+                  <button type="button" className="mini-btn accent" onClick={() => app.updateSettings({ demo: true })}>
+                    演示模式
+                  </button>
+                  <button type="button" className="mini-btn" onClick={() => navigate('/settings')}>
+                    传输设置
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="mini-btn accent" onClick={() => app.recheckProxy()}>
+                    <IconRefresh size={13} /> 重新检测
+                  </button>
+                  <button type="button" className="mini-btn" onClick={() => navigate('/settings')}>
+                    传输设置
+                  </button>
+                </>
+              )
             }
           >
-            <strong>未检测到本地转发。</strong> 浏览器直连 <code>api.deepseek.com</code> 可能被跨域策略拦截；通过 <code>npm run dev</code> 打开本页会自动启用同源转发。
+            {onPages ? (
+              <>
+                <strong>Pages 无法关 CORS。</strong>
+                {' '}静态站没有本地转发；真用请本机 <code>npm run dev</code>，或自建 Worker/反代。
+              </>
+            ) : (
+              <>
+                <strong>未检测到本地转发。</strong>
+                {' '}直连可能被 CORS 拦；用 <code>npm run dev</code> 可走同源代理。
+              </>
+            )}
           </Banner>
         )
       ) : null}
