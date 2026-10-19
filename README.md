@@ -18,7 +18,7 @@ GitHub Pages（`main` / `master` 推送后由 Actions 自动构建部署）：
 
 **https://shalom-lab.github.io/deep-search/**
 
-仓库 Settings → Pages → Source 选 **GitHub Actions**。站点为纯静态：没有本地转发中间件，真实请求走浏览器直连；若上游未放行 CORS，请用演示模式，或改用下方 `npm run dev` / `npm start`。
+仓库 Settings → Pages → Source 选 **GitHub Actions**。站点为纯静态，浏览器直连 `api.deepseek.com`；在设置里填入 API Key 即可搜索与抓取。
 
 ## 快速开始
 
@@ -38,13 +38,13 @@ npm run dev          # 打开 http://127.0.0.1:5273/deep-search/
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm run dev` | 开发服务器（含 DeepSeek 同源转发） |
+| `npm run dev` | 开发服务器（可选挂载同源转发作备用） |
 | `npm run build` | 构建到 `dist/` |
-| `npm run preview` | 预览构建产物（同样带转发，可直接联调） |
-| `npm start` | 生产服务器：托管 `dist/` + 同一份转发中间件 |
+| `npm run preview` | 预览构建产物 |
+| `npm start` | 生产服务器：托管 `dist/`（同样可选挂转发） |
 | `npm run check` | 自检：语法转译、导入解析、依赖声明、无用导入 |
 | `npm run lint` | ESLint：`no-undef`（未定义标识符）、`no-unused-vars` 等 |
-| `npm test` | 39 个用例：库逻辑 30 个 + 渲染冒烟 9 个 |
+| `npm test` | 47 个用例：库逻辑 37 个 + 渲染冒烟 10 个 |
 | `npm run verify` | `check` + `lint` + `test`，提交前跑这一个就够 |
 
 `npm test` 的**渲染冒烟**套件用 `react-dom/server` 把整棵组件树渲染成 HTML，
@@ -78,7 +78,6 @@ npm run dev          # 打开 http://127.0.0.1:5273/deep-search/
 | `deepseek-deepsearch-key` | **API Key** | DeepSeek API Key |
 | `deepseek-deepsearch-base` | API 基址 | 默认 `https://api.deepseek.com` |
 | `deepseek-deepsearch-count` | 默认条数 | `1`–`50` |
-| `deepseek-deepsearch-transport` | 传输方式 | `auto` | `proxy` | `direct` |
 | `deepseek-deepsearch-need-content` | 是否请求正文 | `true` | `false` |
 | `deepseek-deepsearch-deep-intent` | 意图增强 | `true` | `false` |
 | `deepseek-deepsearch-ori-question` | 固定原始问题 | 文本，最多 128 字 |
@@ -153,30 +152,17 @@ localStorage.setItem('deepseek-deepsearch-key', 'sk-你的密钥');
 
 ---
 
-## 关于跨域：为什么需要一个转发
+## 传输说明
 
-浏览器直连 `api.deepseek.com` 通常会**被跨域策略拦截**（`fetch` 抛 `TypeError: Failed to fetch`），
-而这是浏览器行为，前端代码无法绕过——密钥在浏览器里，就必须由浏览器发请求。
+默认**浏览器直连** `api.deepseek.com`（填入 API Key 即可用，Pages 与本地相同）。
 
-因此 `vite.config.js` 挂了一个**无状态转发中间件**（`server/deepseekProxy.js`）：
+本地 `npm run dev` / `npm start` 仍会挂一份可选的无状态同源转发（`server/deepseekProxy.js`）：
 
-- 路径白名单：只转发 `POST /v1/tools/search` 与 `POST /v1/tools/fetch`，不会变成开放代理
-- **只透传** `Authorization` 头，不记录、不落盘、不缓存
-- 同时挂到 **dev server 与 preview server**，所以 `npm run build && npm run preview` 一样能用
-- 生产环境用 `npm start`（`server/serve.js`），托管 `dist/` 的同时挂上同一份中间件
+- 路径白名单：只转发 `POST /v1/tools/search` 与 `POST /v1/tools/fetch`
+- **只透传** `Authorization`，不记录、不落盘
+- 仅在直连失败时作为**静默备用**；设置页不再提供传输方式选择
 
-客户端有三种传输方式（设置页可切换）：
-
-| 模式 | 行为 |
-| --- | --- |
-| **自动**（默认） | 优先走同源转发，失败时自动回退直连 |
-| **仅本地转发** | 只走 `/__deepseek/api/*`，不受跨域限制 |
-| **仅直连上游** | 浏览器 → `api.deepseek.com`，需要上游/网关放行 CORS |
-
-启动时会静默探测 `/__deepseek/health` 判断转发是否可用，状态显示在状态栏与设置页。
-
-> GitHub Pages 即为纯静态部署（见上方「在线地址」）：无本地转发，默认传输方式会回退到直连。
-> 需要绕开 CORS 时，本机用 `npm run dev` 或 `npm start`（带同源转发）。
+一般无需关心转发；直连异常时再用本地开发服务即可。
 
 ---
 
@@ -251,7 +237,7 @@ deepsearch/
 ├── vite.config.js              # base=/deep-search/ + 代理中间件 + 404.html SPA 回退
 ├── eslint.config.js            # ESLint：no-undef / no-unused-vars（含浏览器全局声明）
 ├── server/
-│   ├── deepseekProxy.js        # 无状态转发：白名单 + Authorization 透传（仅本地）
+│   ├── deepseekProxy.js        # 可选本地转发：白名单 + Authorization 透传
 │   └── serve.js                # 可选：本地/自建 Node 托管 dist/ + 同一份中间件
 ├── scripts/
 │   ├── check-syntax.mjs        # 自检：语法 / 导入解析 / 依赖一致性 / 无用导入
@@ -284,7 +270,7 @@ deepsearch/
   渲染后逐节点清洗（移除 `script`/`iframe`/事件属性/危险协议），外链统一加 `noopener noreferrer nofollow`。
 - 密钥只在浏览器内存与 `localStorage` 中出现，历史与统计同样只存本机。
 - 设置页提供「清空本机数据」与「导出设置」（导出内容**不含**密钥）。
-- 生产转发中间件只放行两个接口路径，不做通用代理。
+- 可选本地转发只放行两个接口路径，不做通用代理；线上默认直连。
 
 ---
 

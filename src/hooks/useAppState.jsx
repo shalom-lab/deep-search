@@ -150,7 +150,6 @@ export function AppStateProvider({ children }) {
           ...params,
           apiKey: app.apiKey,
           base: app.base,
-          transport: app.settings.transport,
           proxyAvailable: app.proxy.ok,
           demo: app.settings.demo,
           signal: controller.signal,

@@ -4,9 +4,8 @@
  *   POST {base}/v1/tools/search   { query, count, ori_question, localization, need_content }
  *   POST {base}/v1/tools/fetch    { url }
  *
- * 传输层：浏览器直连 api.deepseek.com 通常会被跨域策略拦截，因此提供两种传输：
- *   - 'proxy'  ：走同源路径 /__deepseek/api/*（由 vite.config.js 挂载的无状态转发中间件）
- *   - 'direct' ：浏览器直连上游，适合已放行 CORS 的部署方式（如官方网关/自建反代）
+ * 传输层默认浏览器直连 api.deepseek.com。本地 dev/preview 若挂了同源转发
+ * （/__deepseek/api/*），仅在直连失败时作为静默备用，UI 不提供传输方式选择。
  * API Key 始终由本模块从 localStorage 读取后放进 Authorization 头，服务端不持有任何密钥。
  */
 import { countChars, daysAgoISO, hostOf, seededInt } from './util.js';
@@ -65,7 +64,7 @@ export const ERROR_META = {
   proxy_error: { label: '本地代理错误', hint: '开发服务器转发失败，检查终端日志与网络。', retryable: true },
   network: {
     label: '网络不可达',
-    hint: '无法连接到 api.deepseek.com。可能是网络中断、代理未启动，或被浏览器跨域策略拦截。',
+    hint: '无法连接到 api.deepseek.com。可能是网络中断或被浏览器跨域策略拦截。',
     retryable: true,
   },
   cors: {
@@ -129,17 +128,17 @@ export function isGitHubPagesHost(hostname) {
   return host.endsWith('.github.io') || host === 'github.io';
 }
 
-/** 按当前 hostname 分流 CORS / 网络提示（Pages 静态站 vs 本地开发）。 */
+/** 直连真正失败时的简短提示（Pages vs 本地可区分，但都不暗示「搜不了」）。 */
 export function corsHintForHost(hostname) {
   if (isGitHubPagesHost(hostname)) {
-    return '当前是 GitHub Pages 静态站，无法关闭上游 CORS。请开演示模式，或本机 npm run dev / npm start，或自建 Worker/反代后再直连。';
+    return '浏览器直连失败（网络或跨域）。可稍后重试；本机 npm run dev 也可作可选备用。';
   }
   const rawHost = hostname ?? (typeof location !== 'undefined' ? location.hostname : '');
   const host = String(rawHost || '').toLowerCase();
   if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
-    return '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请确认已用 npm run dev / npm start 启动（含同源转发），或把传输方式设为“自动”。';
+    return '浏览器直连失败（网络或跨域）。本地可用 npm run dev 的同源转发作备用。';
   }
-  return '浏览器直连 api.deepseek.com 被 CORS 策略拦截。请通过带同源转发的本地服务（npm run dev / npm start）访问，或把传输方式设为“自动”。';
+  return '浏览器直连失败（网络或跨域）。请检查网络后重试；本地开发可用 npm run dev 作可选备用。';
 }
 
 export function describeError(error) {
@@ -148,7 +147,6 @@ export function describeError(error) {
   const statusPart = error?.status ? `HTTP ${error.status}` : '请求失败';
   let hint = meta.hint;
   if (code === 'cors' || code === 'network') {
-    // network 在直连失败时也可能是 CORS；Pages 上统一给可操作建议
     const hostHint = corsHintForHost();
     hint = code === 'cors' ? hostHint : `${meta.hint} ${hostHint}`;
   }
@@ -274,7 +272,7 @@ function isAbortError(err) {
  * @param {object} params.body         请求体
  * @param {string} params.apiKey       BYOK key
  * @param {string} [params.base]
- * @param {'auto'|'proxy'|'direct'} [params.transport]
+ * @param {'auto'|'proxy'|'direct'} [params.transport] 内部用；默认 auto=直连优先，代理仅备用
  * @param {boolean} [params.proxyAvailable]
  * @param {boolean} [params.demo]
  * @param {AbortSignal} [params.signal]
@@ -335,7 +333,8 @@ export async function callTool(params) {
 function resolveTransportChain(transport, proxyAvailable) {
   if (transport === 'proxy') return ['proxy'];
   if (transport === 'direct') return ['direct'];
-  return proxyAvailable ? ['proxy', 'direct'] : ['direct', 'proxy'];
+  // 默认直连；本地转发仅在探测可用时作为静默备用
+  return proxyAvailable ? ['direct', 'proxy'] : ['direct'];
 }
 
 async function realCall({ path, body, apiKey, base, mode, signal, timeoutMs }) {

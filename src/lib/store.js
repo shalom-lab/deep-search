@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   history: 'deepseek-deepsearch-history',
   usage: 'deepseek-deepsearch-usage',
   count: 'deepseek-deepsearch-count',
+  // 旧传输方式键：仅 wipeAll 时清掉，UI/偏好不再读写
   transport: 'deepseek-deepsearch-transport',
   needContent: 'deepseek-deepsearch-need-content',
   deepIntent: 'deepseek-deepsearch-deep-intent',
@@ -46,16 +47,14 @@ export const STORAGE_KEYS = {
 export const LEGACY_SETTINGS_KEY = 'deepseek-deepsearch-settings';
 
 const PREF_FIELDS = [
-  'count', 'transport', 'needContent', 'deepIntent', 'oriQuestion', 'localization',
+  'count', 'needContent', 'deepIntent', 'oriQuestion', 'localization',
   'recordHistory', 'rememberResults', 'highlight', 'demo', 'sort', 'filter',
 ];
-const TRANSPORTS = new Set(['auto', 'proxy', 'direct']);
 const SORTS = new Set(['score', 'authority', 'fresh', 'site']);
 const FILTERS = new Set(['0', '1.5', '2', 'auth3']);
 
 export const DEFAULT_SETTINGS = {
   count: 10,
-  transport: 'auto',
   needContent: false,
   deepIntent: true,
   oriQuestion: '',
@@ -151,7 +150,6 @@ function readSettings() {
     return undefined;
   };
 
-  const transport = from('transport');
   const sort = from('sort');
   const filter = from('filter');
   const ori = from('oriQuestion');
@@ -159,7 +157,6 @@ function readSettings() {
 
   return {
     count: from('count') === undefined ? DEFAULT_SETTINGS.count : clampCount(from('count')),
-    transport: TRANSPORTS.has(transport) ? transport : DEFAULT_SETTINGS.transport,
     needContent: toBool(from('needContent'), DEFAULT_SETTINGS.needContent),
     deepIntent: toBool(from('deepIntent'), DEFAULT_SETTINGS.deepIntent),
     oriQuestion: ori == null ? '' : String(ori).slice(0, 128),
@@ -303,7 +300,6 @@ export function AppProvider({ children }) {
     setSettingsState((prev) => {
       const next = { ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) };
       next.count = clampCount(next.count);
-      if (!TRANSPORTS.has(next.transport)) next.transport = DEFAULT_SETTINGS.transport;
       if (!SORTS.has(next.sort)) next.sort = DEFAULT_SETTINGS.sort;
       if (!FILTERS.has(String(next.filter))) next.filter = DEFAULT_SETTINGS.filter;
       next.oriQuestion = String(next.oriQuestion ?? '').slice(0, 128);

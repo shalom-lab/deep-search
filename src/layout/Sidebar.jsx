@@ -6,21 +6,19 @@ import { useApp } from '../lib/store.js';
 import { useSearchSession } from '../hooks/useAppState.jsx';
 import { cx, formatRelative } from '../lib/util.js';
 
-function keyDotClass({ hasKey, demo, proxyOk }) {
+function keyDotClass({ hasKey, demo }) {
   if (demo) return 'demo';
   if (!hasKey) return 'err';
-  if (!proxyOk) return 'off';
   return 'on';
 }
 
 export default function Sidebar({ open, onNavigate }) {
   const app = useApp();
   const session = useSearchSession();
-  const proxyOk = app.proxy.ok;
 
   const items = [
     { to: '/', label: '搜索', icon: IconSearch, end: true },
-    { to: '/fetch', label: '网页抓取', icon: IconGlobe },
+    { to: '/fetch', label: '抓取', icon: IconGlobe },
     { to: '/history', label: '历史', icon: IconHistory, badge: app.history.length },
     { to: '/settings', label: '设置', icon: IconSettings },
   ];
@@ -111,7 +109,7 @@ export default function Sidebar({ open, onNavigate }) {
                 : '尚未配置 API Key，请到「设置」中填写'
           }
         >
-          <span className={cx('dot', keyDotClass({ hasKey: app.hasKey, demo: app.settings.demo, proxyOk }))} />
+          <span className={cx('dot', keyDotClass({ hasKey: app.hasKey, demo: app.settings.demo }))} />
           <span>
             {app.settings.demo ? '演示模式' : app.hasKey ? `密钥 ${app.keyHint}` : '密钥未设置'}
           </span>

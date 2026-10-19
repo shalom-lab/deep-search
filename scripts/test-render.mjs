@@ -116,7 +116,7 @@ test('四个路由都能完整渲染', () => {
     ['/', '开始一次网页搜索'],
     ['/fetch', '抓取一个网页'],
     ['/history', '调用统计'],
-    ['/settings', 'API Key（BYOK）'],
+    ['/settings', '密钥'],
   ];
   for (const [route, marker] of routes) {
     const html = renderApp(route);

@@ -359,11 +359,11 @@ test('直连模式使用完整基址', async () => {
   assert.equal(calls[0].url, 'https://api.deepseek.com/v1/tools/search');
 });
 
-test('代理失败时自动回退到直连', async () => {
+test('直连失败时回退到本地转发（代理可用）', async () => {
   const seen = [];
   globalThis.fetch = async (url) => {
-    seen.push(url);
-    if (url.startsWith('/__deepseek')) throw new TypeError('Failed to fetch');
+    seen.push(String(url));
+    if (String(url).includes('api.deepseek.com')) throw new TypeError('Failed to fetch');
     return jsonResponse(200, { results: [] });
   };
   const out = await api.searchWeb({
@@ -374,6 +374,26 @@ test('代理失败时自动回退到直连', async () => {
     proxyAvailable: true,
   });
   assert.equal(seen.length, 2);
+  assert.ok(seen[0].includes('api.deepseek.com'));
+  assert.ok(seen[1].startsWith('/__deepseek'));
+  assert.equal(out.transport, 'proxy');
+});
+
+test('无代理时默认只走直连', async () => {
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    return jsonResponse(200, { results: [] });
+  };
+  const out = await api.searchWeb({
+    query: 'x',
+    apiKey: 'sk-k',
+    base: 'https://api.deepseek.com',
+    transport: 'auto',
+    proxyAvailable: false,
+  });
+  assert.equal(seen.length, 1);
+  assert.ok(seen[0].includes('api.deepseek.com'));
   assert.equal(out.transport, 'direct');
 });
 
@@ -397,18 +417,18 @@ test('网络错误提示跨域，并说明如何恢复', async () => {
     () => api.searchWeb({ query: 'x', apiKey: 'sk-k', transport: 'direct' }),
     (err) => {
       assert.equal(err.code, 'cors');
-      assert.match(api.describeError(err).hint, /npm run dev|CORS|跨域|Pages|演示模式/);
+      assert.match(api.describeError(err).hint, /直连失败|跨域|网络|npm run dev|备用/);
       return true;
     },
   );
 });
 
 test('corsHintForHost 按 hostname 分流 Pages 与本地', () => {
-  assert.match(api.corsHintForHost('shalom-lab.github.io'), /CORS|演示模式|npm run dev|Worker|反代/);
+  assert.match(api.corsHintForHost('shalom-lab.github.io'), /直连失败|备用|npm run dev/);
   assert.equal(api.isGitHubPagesHost('shalom-lab.github.io'), true);
   assert.equal(api.isGitHubPagesHost('localhost'), false);
-  assert.match(api.corsHintForHost('localhost'), /npm run dev|同源转发/);
-  assert.match(api.corsHintForHost('127.0.0.1'), /npm run dev|同源转发/);
+  assert.match(api.corsHintForHost('localhost'), /直连失败|同源转发|npm run dev/);
+  assert.match(api.corsHintForHost('127.0.0.1'), /直连失败|同源转发|npm run dev/);
 });
 
 const retryResponse = (status, payload, retryAfter = '0') =>

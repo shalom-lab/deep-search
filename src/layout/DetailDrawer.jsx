@@ -105,7 +105,6 @@ export default function DetailDrawer() {
         url,
         apiKey: app.apiKey,
         base: app.base,
-        transport: app.settings.transport,
         proxyAvailable: app.proxy.ok,
         demo: app.settings.demo,
         signal: controller.signal,

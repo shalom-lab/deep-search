@@ -16,7 +16,7 @@ import { cx, formatClock, formatDuration } from './lib/util.js';
 
 const TITLES = {
   '/': '搜索',
-  '/fetch': '网页抓取',
+  '/fetch': '抓取',
   '/history': '历史',
   '/settings': '设置',
 };
@@ -55,9 +55,7 @@ export default function App() {
     ? { cls: 'demo', text: '演示模式' }
     : !app.hasKey
       ? { cls: 'err', text: '未设置密钥' }
-      : app.proxy.ok
-        ? { cls: 'on', text: `密钥已就绪 · ${app.keyHint}` }
-        : { cls: 'off', text: '密钥已就绪 · 直连' };
+      : { cls: 'on', text: `密钥已就绪 · ${app.keyHint}` };
 
   return (
     <div className="app">

@@ -85,7 +85,6 @@ export default function FetchPage() {
         url: value,
         apiKey: app.apiKey,
         base: app.base,
-        transport: app.settings.transport,
         proxyAvailable: app.proxy.ok,
         demo: app.settings.demo,
         signal: controller.signal,
@@ -125,7 +124,7 @@ export default function FetchPage() {
     <>
       <div className="panel">
         <div className="panel-head">
-          <h2>网页抓取</h2>
+          <h2>抓取</h2>
           <p>
             输入任意 HTTP/HTTPS 网址，调用 <code>POST /v1/tools/fetch</code> 返回页面标题与 Markdown 正文。
             URL 长度不超过 8192，必须包含 host，且不能携带用户名或密码。
