@@ -467,6 +467,20 @@ mark.hl {
 .meta-left, .meta-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .kbd-tip { font-size: 11.5px; color: var(--text-3); }
 
+/* 返回条数：文档流内联展开，顶栏增高、结果区自然下移，避免浮层遮挡概要 */
+.count-root { display: flex; flex-direction: column; gap: 7px; }
+.count-panel {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 0;
+  padding: 10px 12px;
+  max-width: 420px;
+  animation: fade-up var(--t-base) both;
+}
+.count-panel .field { flex: 1; min-width: 0; }
+.count-panel .btn { flex: 0 0 auto; }
+
 .chip {
   display: inline-flex;
   align-items: center;
