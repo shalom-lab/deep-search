@@ -84,7 +84,7 @@ export default function App() {
           </header>
         ) : null}
 
-        <div className="scroll-area">
+        <div className={cx("scroll-area", !isSearchPage && "has-page-top")}>
           <Routes>
             <Route path="/" element={<SearchPage />} />
             <Route path="/fetch" element={<FetchPage />} />

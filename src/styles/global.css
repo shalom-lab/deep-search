@@ -608,6 +608,10 @@ mark.hl {
   padding: 0 var(--sp-5) var(--sp-6);
   scroll-behavior: smooth;
 }
+/* 非搜索页去掉全局 SearchBar 后补上呼吸距；搜索页保持贴顶栏 */
+.scroll-area.has-page-top {
+  padding-top: var(--sp-5);
+}
 .view { display: none; animation: fade-up var(--t-slow) both; }
 .view.is-active { display: block; }
 
@@ -1720,6 +1724,7 @@ mark.hl {
   .brand .only-mobile { margin-left: auto; }
   .topbar { padding: var(--sp-4) var(--sp-4) var(--sp-3); }
   .scroll-area { padding: 0 var(--sp-4) var(--sp-6); }
+  .scroll-area.has-page-top { padding-top: var(--sp-5); }
   .statusbar { padding: 7px var(--sp-4); }
   .grid-2 { grid-template-columns: 1fr; }
 }
