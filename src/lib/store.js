@@ -357,6 +357,16 @@ export function AppProvider({ children }) {
     });
   }, []);
 
+  const removeHistoryMany = useCallback((ids) => {
+    const drop = new Set(Array.isArray(ids) ? ids : []);
+    if (!drop.size) return;
+    setHistoryState((prev) => {
+      const next = prev.filter((item) => !drop.has(item.id));
+      void persistHistory(next);
+      return next;
+    });
+  }, []);
+
   const clearHistory = useCallback(() => {
     setHistoryState([]);
     void persistHistory([]);
@@ -486,6 +496,7 @@ export function AppProvider({ children }) {
       history,
       pushHistory,
       removeHistory,
+      removeHistoryMany,
       clearHistory,
 
       // 用量
@@ -505,7 +516,7 @@ export function AppProvider({ children }) {
       apiKey, setApiKey, clearApiKey, base, setBase,
       settings, updateSettings, resetSettings,
       theme, toggleTheme, proxy,
-      history, pushHistory, removeHistory, clearHistory,
+      history, pushHistory, removeHistory, removeHistoryMany, clearHistory,
       usage, recordUsage, resetUsage, derived, wipeAll,
       storageReady, dataEpoch,
     ],

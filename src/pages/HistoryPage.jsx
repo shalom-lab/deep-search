@@ -1,5 +1,5 @@
 /** 历史页：调用统计（含图表）+ 搜索历史快照。 */
-import React, { Suspense, lazy, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { EmptyState, RelativeTime, SiteFavicon } from '../components/common.jsx';
 import { IconDownload, IconExternal, IconHistory, IconLayers, IconRefresh, IconTrash } from '../components/Icon.jsx';
@@ -22,6 +22,11 @@ function Stat({ k, v, unit, tone, title }) {
   );
 }
 
+function previewQuery(q, max = 48) {
+  const s = String(q || '').trim() || '（无查询词）';
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
 const HistoryCharts = lazy(() => import('./HistoryCharts.jsx'));
 
 export default function HistoryPage() {
@@ -31,8 +36,23 @@ export default function HistoryPage() {
   const navigate = useNavigate();
   const { toast, confirm } = useUI();
   const [expanded, setExpanded] = useState(() => new Set());
+  const [selected, setSelected] = useState(() => new Set());
 
   const { derived, usage } = app;
+
+  // 历史列表变化时，丢掉已不存在的选中项
+  useEffect(() => {
+    const ids = new Set(app.history.map((h) => h.id));
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed || next.size !== prev.size ? next : prev;
+    });
+  }, [app.history]);
 
   const daily = useMemo(() => {
     const out = [];
@@ -55,6 +75,8 @@ export default function HistoryPage() {
 
   const hasData = derived.totalCalls > 0;
   const activeDays = daily.filter((d) => d.搜索 + d.抓取 > 0).length;
+  const selectedCount = selected.size;
+  const allSelected = app.history.length > 0 && selectedCount === app.history.length;
 
   const toggle = (id) =>
     setExpanded((prev) => {
@@ -63,6 +85,19 @@ export default function HistoryPage() {
       else next.add(id);
       return next;
     });
+
+  const toggleSelect = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(app.history.map((h) => h.id)));
+  };
 
   const exportHistory = () => {
     const rows = app.history.flatMap((h) =>
@@ -85,6 +120,53 @@ export default function HistoryPage() {
     const name = exportFilename('deepsearch-history', 'all', 'csv');
     downloadText(name, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
     toast({ tone: 'ok', title: '已导出历史', text: name });
+  };
+
+  const deleteOne = async (h) => {
+    const ok = await confirm({
+      title: '删除这条历史？',
+      text: `将删除「${previewQuery(h.query)}」，此操作不可恢复。`,
+      okLabel: '删除',
+    });
+    if (!ok) return;
+    app.removeHistory(h.id);
+    setSelected((prev) => {
+      if (!prev.has(h.id)) return prev;
+      const next = new Set(prev);
+      next.delete(h.id);
+      return next;
+    });
+    toast({ tone: 'ok', title: '已删除 1 条历史' });
+  };
+
+  const deleteSelected = async () => {
+    const n = selected.size;
+    if (!n) return;
+    const ok = await confirm({
+      title: '删除所选历史？',
+      text: `将删除已选中的 ${n} 条搜索历史，此操作不可恢复。`,
+      okLabel: `删除 ${n} 条`,
+    });
+    if (!ok) return;
+    const ids = [...selected];
+    app.removeHistoryMany(ids);
+    setSelected(new Set());
+    toast({ tone: 'ok', title: `已删除 ${n} 条历史` });
+  };
+
+  const clearAll = async () => {
+    const n = app.history.length;
+    if (!n) return;
+    const ok = await confirm({
+      title: '清空全部历史？',
+      text: `将删除全部 ${n} 条搜索历史，此操作不可恢复。调用统计不受影响。`,
+      okLabel: '清空全部',
+    });
+    if (!ok) return;
+    app.clearHistory();
+    session.clearSearch();
+    setSelected(new Set());
+    toast({ tone: 'ok', title: '历史已清空' });
   };
 
   return (
@@ -148,24 +230,29 @@ export default function HistoryPage() {
           <h2>搜索历史</h2>
           <span className="muted">
             共 {app.history.length} 条 · 最多保留 60 条{app.settings.rememberResults ? '（含结果快照）' : '（未保存结果快照）'}
+            {selectedCount ? ` · 已选 ${selectedCount}` : ''}
           </span>
         </div>
         <div className="rh-right">
-          <button type="button" className="btn ghost" disabled={!app.history.length} onClick={exportHistory}>
-            <IconDownload size={15} /> 导出 CSV
-          </button>
+          {app.history.length ? (
+            <label className="hist-select-all">
+              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+              <span>{allSelected ? '取消全选' : '全选'}</span>
+            </label>
+          ) : null}
           <button
             type="button"
             className="btn ghost danger"
-            disabled={!app.history.length}
-            onClick={async () => {
-              if (await confirm({ title: '清空全部历史？', text: `将删除 ${app.history.length} 条搜索历史，此操作不可恢复。`, okLabel: '清空' })) {
-                app.clearHistory();
-                session.clearSearch();
-                toast({ tone: 'ok', title: '历史已清空' });
-              }
-            }}
+            disabled={!selectedCount}
+            onClick={deleteSelected}
+            title={selectedCount ? `删除已选 ${selectedCount} 条` : '先勾选要删除的历史'}
           >
+            <IconTrash size={15} /> 删除所选{selectedCount ? ` (${selectedCount})` : ''}
+          </button>
+          <button type="button" className="btn ghost" disabled={!app.history.length} onClick={exportHistory}>
+            <IconDownload size={15} /> 导出 CSV
+          </button>
+          <button type="button" className="btn ghost danger" disabled={!app.history.length} onClick={clearAll}>
             <IconTrash size={15} /> 清空
           </button>
         </div>
@@ -179,10 +266,19 @@ export default function HistoryPage() {
         <div className="history-list">
           {app.history.map((h) => {
             const isOpen = expanded.has(h.id);
+            const isChecked = selected.has(h.id);
             const top = h.results?.[0];
             return (
-              <div className="hcard" key={h.id}>
+              <div className={`hcard${isChecked ? ' is-selected' : ''}`} key={h.id}>
                 <div className="hcard-top">
+                  <label className="hcard-check" title="选择此条">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleSelect(h.id)}
+                      aria-label={`选择历史：${previewQuery(h.query, 32)}`}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="hcard-q"
@@ -215,7 +311,7 @@ export default function HistoryPage() {
                     <button
                       type="button"
                       className="mini-btn danger"
-                      onClick={() => app.removeHistory(h.id)}
+                      onClick={() => deleteOne(h)}
                       title="删除这条记录"
                     >
                       <IconTrash size={13} />
