@@ -57,24 +57,32 @@ export default function App() {
       ? { cls: 'err', text: '未设置密钥' }
       : { cls: 'on', text: `密钥已就绪 · ${app.keyHint}` };
 
+  // 全局搜索栏只在搜索页；抓取/历史/设置不渲染，避免占顶
+  const isSearchPage = location.pathname === '/';
+  const showTopbar = isSearchPage || isMobile;
+
   return (
     <div className="app">
       <Sidebar open={sidebarOpen} onNavigate={closeSidebar} />
 
       <main className="main">
-        <header className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              type="button"
-              className="icon-btn only-mobile"
-              aria-label="打开侧栏"
-              onClick={() => setSidebarOpen((v) => !v)}
-            >
-              <IconMenu size={18} />
-            </button>
-            <SearchBar />
-          </div>
-        </header>
+        {showTopbar ? (
+          <header className="topbar">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+              <button
+                type="button"
+                className="icon-btn only-mobile"
+                aria-label="打开侧栏"
+                onClick={() => setSidebarOpen((v) => !v)}
+              >
+                <IconMenu size={18} />
+              </button>
+              {isSearchPage ? <SearchBar /> : (
+                <span className="topbar-title only-mobile">{TITLES[location.pathname] || 'DeepSearch'}</span>
+              )}
+            </div>
+          </header>
+        ) : null}
 
         <div className="scroll-area">
           <Routes>

@@ -424,8 +424,14 @@ mark.hl {
   transition: border-color var(--t-base), background var(--t-base);
 }
 .topbar.is-stuck { border-color: var(--border-2); }
+.topbar-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
 
-.search-wrap { display: flex; flex-direction: column; gap: 7px; }
+.search-wrap { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 0; }
 
 .searchbar {
   display: flex;
