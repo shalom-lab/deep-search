@@ -644,6 +644,9 @@ mark.hl {
 
 .rcard {
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--surface-solid);
@@ -664,8 +667,8 @@ mark.hl {
   content: "";
   position: absolute;
   left: 0;
-  top: 10px;
-  bottom: 10px;
+  top: 8px;
+  bottom: 8px;
   width: 2px;
   border-radius: 0 2px 2px 0;
   background: var(--tier-color, transparent);
@@ -676,6 +679,17 @@ mark.hl {
 .rcard.tier-fair { --tier-color: var(--accent-3); }
 .rcard.tier-low { --tier-color: var(--text-3); }
 
+/* 左侧窄轨：favicon + 序号，与右侧内容对齐 */
+.rc-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 26px;
+  width: 26px;
+  padding-top: 1px;
+}
+.rc-main { flex: 1; min-width: 0; }
 .rc-head { display: flex; align-items: flex-start; gap: 9px; }
 .rc-fav {
   width: 26px;
@@ -839,12 +853,23 @@ mark.hl {
   font-weight: 560;
 }
 .rank-badge {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
-  min-width: 18px;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: -0.02em;
 }
+.tag.rc-tier {
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.tag.rc-tier.tier-top { color: var(--accent-2); border-color: rgb(139 92 246 / 0.3); background: rgb(139 92 246 / 0.1); }
+.tag.rc-tier.tier-good { color: var(--accent); border-color: var(--accent-ring); background: var(--accent-soft); }
+.tag.rc-tier.tier-fair { color: var(--accent-3); border-color: rgb(34 211 238 / 0.28); background: rgb(34 211 238 / 0.1); }
+.tag.rc-tier.tier-low { color: var(--text-3); }
 
 /* 分组（按站点聚合） */
 .site-group { margin-bottom: var(--sp-5); }

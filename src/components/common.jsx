@@ -266,7 +266,7 @@ export function CopyButton({ text, label = '复制', className = 'mini-btn', onD
 }
 
 /* ─────────────── 结果元信息行 ─────────────── */
-export function ResultMeta({ result, showUrl = true }) {
+export function ResultMeta({ result, showUrl = true, children }) {
   const date = formatDateOnly(result.date);
   return (
     <div className="rc-meta">
@@ -284,6 +284,7 @@ export function ResultMeta({ result, showUrl = true }) {
         </>
       ) : null}
       <AuthorityBadge value={result.authority} />
+      {children}
     </div>
   );
 }
