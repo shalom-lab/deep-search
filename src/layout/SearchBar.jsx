@@ -157,9 +157,9 @@ export default function SearchBar() {
         </button>
       </form>
 
-      <div ref={countRootRef} className="count-root">
-        <div className="search-meta">
-          <div className="meta-left">
+      <div className="search-meta">
+        <div className="meta-left">
+          <div ref={countRootRef} className="count-anchor">
             <button
               type="button"
               className="chip"
@@ -172,66 +172,65 @@ export default function SearchBar() {
               <IconList size={14} />
               <span>{countValue} 条</span>
             </button>
-
-            <button
-              type="button"
-              className="chip"
-              aria-pressed={app.settings.needContent}
-              title="need_content：让接口在 content 中返回网页正文（正文更全，但请求更慢）"
-              onClick={() => app.updateSettings({ needContent: !app.settings.needContent })}
-            >
-              <IconLayers size={14} />
-              <span>返回正文</span>
-            </button>
-
-            <button
-              type="button"
-              className="chip"
-              aria-pressed={app.settings.deepIntent}
-              title="ori_question：把原始问题一并提交，帮助接口更好地理解搜索意图"
-              onClick={() => app.updateSettings({ deepIntent: !app.settings.deepIntent })}
-            >
-              <IconSpark size={14} />
-              <span>意图增强</span>
-            </button>
-
-            {app.settings.demo ? (
-              <span className="chip" aria-pressed="true" title="当前使用内置演示数据，不会发起真实请求">
-                <IconAlert size={14} />
-                <span>演示模式</span>
-              </span>
+            {showCount ? (
+              <div id="count-panel" className="panel count-panel" role="region" aria-label="返回条数">
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor="countRange">
+                    返回条数 <span className="dim">count = {countValue}</span>
+                  </label>
+                  <div className="range-row">
+                    <input
+                      id="countRange"
+                      type="range"
+                      min={COUNT_MIN}
+                      max={COUNT_MAX}
+                      value={countValue}
+                      onChange={(e) => app.updateSettings({ count: clampCount(e.target.value) })}
+                    />
+                    <output>{countValue}</output>
+                  </div>
+                  <p className="hint">只影响返回条数，不影响单次请求价格。</p>
+                </div>
+                <button type="button" className="btn ghost sm" onClick={() => setShowCount(false)}>
+                  收起
+                </button>
+              </div>
             ) : null}
           </div>
 
-          <div className="meta-right">
-            <span className="kbd-tip">Ctrl/⌘ + K 聚焦 · Ctrl/⌘ + J 主题 · ↑↓ 选择 · Enter 抓取正文</span>
-          </div>
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={app.settings.needContent}
+            title="need_content：让接口在 content 中返回网页正文（正文更全，但请求更慢）"
+            onClick={() => app.updateSettings({ needContent: !app.settings.needContent })}
+          >
+            <IconLayers size={14} />
+            <span>返回正文</span>
+          </button>
+
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={app.settings.deepIntent}
+            title="ori_question：把原始问题一并提交，帮助接口更好地理解搜索意图"
+            onClick={() => app.updateSettings({ deepIntent: !app.settings.deepIntent })}
+          >
+            <IconSpark size={14} />
+            <span>意图增强</span>
+          </button>
+
+          {app.settings.demo ? (
+            <span className="chip" aria-pressed="true" title="当前使用内置演示数据，不会发起真实请求">
+              <IconAlert size={14} />
+              <span>演示模式</span>
+            </span>
+          ) : null}
         </div>
 
-        {showCount ? (
-          <div id="count-panel" className="panel count-panel" role="region" aria-label="返回条数">
-            <div className="field" style={{ margin: 0 }}>
-              <label htmlFor="countRange">
-                返回条数 <span className="dim">count = {countValue}</span>
-              </label>
-              <div className="range-row">
-                <input
-                  id="countRange"
-                  type="range"
-                  min={COUNT_MIN}
-                  max={COUNT_MAX}
-                  value={countValue}
-                  onChange={(e) => app.updateSettings({ count: clampCount(e.target.value) })}
-                />
-                <output>{countValue}</output>
-              </div>
-              <p className="hint">只影响返回条数，不影响单次请求价格。</p>
-            </div>
-            <button type="button" className="btn ghost sm" onClick={() => setShowCount(false)}>
-              收起
-            </button>
-          </div>
-        ) : null}
+        <div className="meta-right">
+          <span className="kbd-tip">Ctrl/⌘ + K 聚焦 · Ctrl/⌘ + J 主题 · ↑↓ 选择 · Enter 抓取正文</span>
+        </div>
       </div>
 
       <div className="preset-row">

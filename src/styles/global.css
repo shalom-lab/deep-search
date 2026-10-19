@@ -413,6 +413,8 @@ mark.hl {
 }
 
 .topbar {
+  position: relative;
+  z-index: 30;
   flex: 0 0 auto;
   padding: var(--sp-3) var(--sp-5) var(--sp-3);
   display: flex;
@@ -422,6 +424,7 @@ mark.hl {
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   transition: border-color var(--t-base), background var(--t-base);
+  overflow: visible;
 }
 .topbar.is-stuck { border-color: var(--border-2); }
 .topbar-title {
@@ -475,19 +478,26 @@ mark.hl {
 .meta-left, .meta-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .kbd-tip { font-size: 11.5px; color: var(--text-3); }
 
-/* 返回条数：文档流内联展开，顶栏增高、结果区自然下移，避免浮层遮挡概要 */
-.count-root { display: flex; flex-direction: column; gap: 7px; }
+/* 返回条数：相对「10 条」chip 的漂浮浮层，不占文档流 */
+.count-anchor { position: relative; display: inline-flex; }
 .count-panel {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 280px;
   margin: 0;
-  padding: 10px 12px;
-  max-width: 420px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-md);
   animation: fade-up var(--t-base) both;
 }
 .count-panel .field { flex: 1; min-width: 0; }
-.count-panel .btn { flex: 0 0 auto; }
+.count-panel .btn { align-self: flex-end; flex: 0 0 auto; }
 
 .chip {
   display: inline-flex;
